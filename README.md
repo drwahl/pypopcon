@@ -1,4 +1,4 @@
 pypopcon
 ========
 
-Python implementation of Debian's popularity-contest tool
+A Python tool similar to Debian's popularity-contest tool.
