@@ -7,16 +7,13 @@ import subprocess
 import sys
 import time
 import optparse
+try:
+    import rpm
+except:
+    rpm = False
 
 ### logging setup
 global_log_level = logging.WARN
-#default_log_file = '/var/log/pypopcon.log'
-default_log_format = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
-logging.basicConfig(#filename=default_log_file,
-                    level=logging.WARN,
-                    format='%(asctime)s %(name)s - %(levelname)s - %(message)s',
-                    datefmt='%y.%m.%d %H:%M:%S'
-                   )
 console = logging.StreamHandler(sys.stderr)
 console.setLevel(logging.WARN)
 formatter = logging.Formatter('%(name)s: %(levelname)-8s %(message)s')
@@ -77,7 +74,9 @@ def get_files(provider, pkg):
 
     if 'rpm' in provider:
         log.debug("'rpm' determined as a provider in get_files")
-        files_list = get_rpm_files(pkg)
+        ts = rpm.TransactionSet()
+        rpmdb = ts.dbMatch('name')
+        files_list = get_rpm_files(rpmdb, pkg)
 
     log.debug("final file_list is: %s" % files_list)
 
@@ -132,7 +131,7 @@ def file_stat(pkgfile):
         return get_file_stat(item)
 
 def get_dpkg_packages():
-    """ return a list of packages installed on a debian system """
+    """ return a list of packages installed on a debian system (returns a list) """
     log.debug("in get_dpkg_packages()")
 
     dpkg_list = []
@@ -155,16 +154,40 @@ def get_dpkg_files(pkg):
     return pkg_file_list
 
 def get_rpm_packages():
-    """ return a list of files shipped with a rpm package """
+    """ return a list of files shipped with a rpm package (returns a list) """
     log.debug("in get_rpm_packages()")
 
-    return 
+    pkg_list = []
+    ts = rpm.TransactionSet()
+    for pkg in ts.dbMatch('name'):
+        pkg_list.append(pkg['name'])
 
-def get_rpm_files(pkg):
+    log.debug("returning list: %s" % pkg_list)
+
+    return pkg_list
+
+def get_rpm_files(rpmdb, pkg):
     """ return a list of files shipped with a rpm package """
     log.debug("in get_rpm_files(%s)" % pkg)
 
-    return
+    package = ''
+    files = []
+    log.debug('searching for %s in rpm database' % pkg)
+    for rpmpkg in rpmdb:
+        log.debug('current package is %s' % rpmpkg['name'])
+        if rpmpkg['name'] == pkg:
+            log.debug('found rpmpkg %s matches pkg %s' % (rpmpkg['name'], pkg) )
+            package = rpmpkg
+            break
+
+    if not package:
+        log.debug('no packages matched %s' % pkg)
+
+    files = package['FILENAMES']
+
+    log.debug("returning list: %s" % files)
+
+    return files
 
 if __name__ == "__main__":
 
