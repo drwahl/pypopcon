@@ -22,6 +22,7 @@ logging.getLogger("pypopcon").addHandler(console)
 log = logging.getLogger("pypopcon")
 log.debug("Starting log")
 
+
 def get_options():
     """ command-line options """
     log.debug("in get_options()")
@@ -34,7 +35,7 @@ def get_options():
     optional = optparse.OptionGroup(parser, "Optional")
 
     optional.add_option("-v", "--verbose", action="store_true", dest="debug", default=False,
-                     help="Enable verbose output.")
+                        help="Enable verbose output.")
 
     parser.add_option_group(required)
     parser.add_option_group(optional)
@@ -46,21 +47,22 @@ def get_options():
 
     return options
 
+
 def runme(cmd):
     """ run commands in a subprocess and wait for the return code. """
     log.debug("in runme(%s)" % cmd)
 
-    proc = subprocess.Popen(cmd, \
-            shell=True, \
-            stdin=subprocess.PIPE, \
-            stdout=subprocess.PIPE, \
-            stderr=subprocess.PIPE)
+    proc = subprocess.Popen(cmd,
+                            shell=True,
+                            stdin=subprocess.PIPE,
+                            stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE)
     output = proc.communicate()
 
     log.debug("return code: %s" % proc.returncode)
-#    log.debug(output)
 
     return proc.returncode, output
+
 
 def get_files(provider, pkg):
     """ method to get a list of files of each package for each package management system (returns a list) """
@@ -82,6 +84,7 @@ def get_files(provider, pkg):
 
     return files_list
 
+
 def get_packages(provider):
     """ get the list of packages for each package provider (returns a dict) """
     log.debug("in get_packages(%s)" % provider)
@@ -97,6 +100,7 @@ def get_packages(provider):
 
     return packages_list
 
+
 def get_file_stat(pkgfile):
     """ get file stats: mode, inode, device, hard_links, owner_uid, group_uid, byte_size, atime, mtime, ctime """
     log.debug("in get_file_stat(%s)" % pkgfile)
@@ -104,18 +108,19 @@ def get_file_stat(pkgfile):
     file_stats = {}
     pkg_file_stat = os.stat(pkgfile)
     #file stats (this needs to be a list of dicts)
-    file_stats = { 'mode' : pkg_file_stat.st_mode,
-                   'inode' : pkg_file_stat.st_ino,
-                   'device' : pkg_file_stat.st_dev,
-                   'hard_links' : pkg_file_stat.st_nlink,
-                   'owner_uid' : pkg_file_stat.st_uid,
-                   'owner_gid' : pkg_file_stat.st_gid,
-                   'byte_size' : int(pkg_file_stat.st_size),
-                   'atime' : int(pkg_file_stat.st_atime),
-                   'mtime' : int(pkg_file_stat.st_mtime),
-                   'ctime' : int(pkg_file_stat.st_ctime),
-                 }
+    file_stats = {'mode': pkg_file_stat.st_mode,
+                  'inode': pkg_file_stat.st_ino,
+                  'device': pkg_file_stat.st_dev,
+                  'hard_links': pkg_file_stat.st_nlink,
+                  'owner_uid': pkg_file_stat.st_uid,
+                  'owner_gid': pkg_file_stat.st_gid,
+                  'byte_size': int(pkg_file_stat.st_size),
+                  'atime': int(pkg_file_stat.st_atime),
+                  'mtime': int(pkg_file_stat.st_mtime),
+                  'ctime': int(pkg_file_stat.st_ctime),
+                  }
     return file_stats
+
 
 def file_stat(pkgfile):
     """ a function to gracefully handle files in both list and string type """
@@ -129,6 +134,7 @@ def file_stat(pkgfile):
         return pkg_files
     else:
         return get_file_stat(item)
+
 
 def get_dpkg_packages():
     """ return a list of packages installed on a debian system (returns a list) """
@@ -145,6 +151,7 @@ def get_dpkg_packages():
 
     return dpkg_list
 
+
 def get_dpkg_files(pkg):
     """ return a list of files shipped with a debian package """
     log.debug("in get_dpkg_files(%s)" % pkg)
@@ -152,6 +159,7 @@ def get_dpkg_files(pkg):
     pkg_file_list = runme('dpkg -L %s' % pkg)[1][0].split('\n')
 
     return pkg_file_list
+
 
 def get_rpm_packages():
     """ return a list of files shipped with a rpm package (returns a list) """
@@ -166,6 +174,7 @@ def get_rpm_packages():
 
     return pkg_list
 
+
 def get_rpm_files(rpmdb, pkg):
     """ return a list of files shipped with a rpm package """
     log.debug("in get_rpm_files(%s)" % pkg)
@@ -176,7 +185,7 @@ def get_rpm_files(rpmdb, pkg):
     for rpmpkg in rpmdb:
         log.debug('current package is %s' % rpmpkg['name'])
         if rpmpkg['name'] == pkg:
-            log.debug('found rpmpkg %s matches pkg %s' % (rpmpkg['name'], pkg) )
+            log.debug('found rpmpkg %s matches pkg %s' % (rpmpkg['name'], pkg))
             package = rpmpkg
             break
 
@@ -189,21 +198,28 @@ def get_rpm_files(rpmdb, pkg):
 
     return files
 
+
 if __name__ == "__main__":
 
     options = get_options()
 
     #set up some easy to reference times
     now = int(time.time())
-    daylen = int(24*60*60)
-    monthlen = int(daylen*30)
-    lastmonth = int(now-monthlen)
+    daylen = int(24 * 60 * 60)
+    monthlen = int(daylen * 30)
+    lastmonth = int(now - monthlen)
 
     installed_pkg_provider = []
     if os.path.isdir('/var/lib/dpkg'):
+        log.debug('dpkg package manager found (/var/lib/dpkg exists)')
         installed_pkg_provider.append('dpkg')
-    if os.path.isdir('/var/lib/rpm'):
+    else:
+        log.debug('dpkg package manager not found (/var/lib/dpkg does not exist)')
+    if rpm:
+        log.debug('rpm package manager found (rpm python module installed)')
         installed_pkg_provider.append('rpm')
+    else:
+        log.debug('rpm package manager not found (rpm python module not installed)')
 
     if not installed_pkg_provider:
         print "No package management system found."
@@ -249,7 +265,7 @@ if __name__ == "__main__":
             #analysis from file stats
             if pkg_stat[provider][pkg]['atime'] < lastmonth:
                 pkg_stat[provider][pkg]['analysis'] = '<OLD>'
-            elif pkg_stat[provider][pkg]['atime'] > lastmonth and int(pkg_stat[provider][pkg]['atime'])-int(pkg_stat[provider][pkg]['ctime']) < daylen:
+            elif pkg_stat[provider][pkg]['atime'] > lastmonth and int(pkg_stat[provider][pkg]['atime']) - int(pkg_stat[provider][pkg]['ctime']) < daylen:
                 pkg_stat[provider][pkg]['analysis'] = '<RECENT-CTIME>'
             else:
                 pkg_stat[provider][pkg]['analysis'] = ''
