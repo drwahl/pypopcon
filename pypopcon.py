@@ -141,11 +141,9 @@ def get_dpkg_packages():
     log.debug("in get_dpkg_packages()")
 
     dpkg_list = []
-    pkg_list_cmd = "dpkg-query --show --showformat='${status} ${package}\n'"
-    ret, pkgs = runme(pkg_list_cmd)
-    for pkg in pkgs[0].split('\n'):
-        if 'installed' in pkg:
-            dpkg_list.append(pkg.split()[3])
+    for line in open('/var/lib/dpkg/status').readlines():
+        if line.startswith('Package: '):
+            dpkg_list.append(line.strip('Package:').strip())
 
     log.debug("returning list: %s" % dpkg_list)
 
@@ -199,8 +197,26 @@ def get_rpm_files(rpmdb, pkg):
     return files
 
 
-if __name__ == "__main__":
+def get_providers():
+    """ return a list of package manamagent systems on the system (referred to as providers) """
+    log.debug("in get_providers()")
 
+    providers = []
+    if os.path.isdir('/var/lib/dpkg'):
+        log.debug('dpkg package manager found (/var/lib/dpkg exists)')
+        providers.append('dpkg')
+    else:
+        log.debug('dpkg package manager not found (/var/lib/dpkg does not exist)')
+    if rpm:
+        log.debug('rpm package manager found (rpm python module installed)')
+        providers.append('rpm')
+    else:
+        log.debug('rpm package manager not found (rpm python module not installed)')
+
+    return providers
+
+
+def main():
     options = get_options()
 
     #set up some easy to reference times
@@ -209,27 +225,17 @@ if __name__ == "__main__":
     monthlen = int(daylen * 30)
     lastmonth = int(now - monthlen)
 
-    installed_pkg_provider = []
-    if os.path.isdir('/var/lib/dpkg'):
-        log.debug('dpkg package manager found (/var/lib/dpkg exists)')
-        installed_pkg_provider.append('dpkg')
-    else:
-        log.debug('dpkg package manager not found (/var/lib/dpkg does not exist)')
-    if rpm:
-        log.debug('rpm package manager found (rpm python module installed)')
-        installed_pkg_provider.append('rpm')
-    else:
-        log.debug('rpm package manager not found (rpm python module not installed)')
+    installed_pkg_providers = get_providers()
 
-    if not installed_pkg_provider:
+    if not installed_pkg_providers:
         print "No package management system found."
         sys.exit(1)
 
-    pkg_list = get_packages(installed_pkg_provider)
+    pkg_list = get_packages(installed_pkg_providers)
 
     #ignore any package managers that are installed, but are managing zero packages
     pkg_provider = []
-    for provider in installed_pkg_provider:
+    for provider in installed_pkg_providers:
         if pkg_list[provider]:
             pkg_provider.append(provider)
 
@@ -274,3 +280,7 @@ if __name__ == "__main__":
     for provider in pkg_stat:
         for pkg, atime in sorted(pkg_stat[provider].iteritems(), reverse=True, key=lambda x: x[1]['atime']):
             print '%s %s %s %s' % (pkg_stat[provider][pkg]['atime'], pkg_stat[provider][pkg]['ctime'], pkg, pkg_stat[provider][pkg]['analysis'])
+
+
+if __name__ == "__main__":
+    main()
