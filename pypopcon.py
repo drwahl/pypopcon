@@ -64,21 +64,46 @@ def runme(cmd):
     return proc.returncode, output
 
 
-def get_files(provider, pkg):
+def get_files(package_list = None, provider = None, pkg = None):
     """ method to get a list of files of each package for each package management system (returns a list) """
-    log.debug("in get_files(%s, %s)" % (provider, pkg))
+    log.debug("in get_files(%s, %s, %s)" % (package_list, provider, pkg))
 
     files_list = []
-    if 'dpkg' in provider:
-        log.debug("'dpkg' determined as a provider in get_files")
-        #files_list.append(get_dpkg_files(pkg))
-        files_list = get_dpkg_files(pkg)
+    if package_list != None and type(package_list) is type({}):
+        #a dict of package managers as keys and a list of packages as values has
+        #been passed in, so iterate over that
+        for pkg_provider in package_list:
+            if 'dpkg' in pkg_provider:
+                log.debug("'dpkg' determined as a provider in get_files")
+                files_list = files_list + get_dpkg_files(package_list['dpkg'])
 
-    if 'rpm' in provider:
-        log.debug("'rpm' determined as a provider in get_files")
-        ts = rpm.TransactionSet()
-        rpmdb = ts.dbMatch('name')
-        files_list = get_rpm_files(rpmdb, pkg)
+            if 'rpm' in pkg_provider:
+                log.debug("'rpm' determined as a provider in get_files")
+                ts = rpm.TransactionSet()
+                rpmdb = ts.dbMatch('name')
+                files_list = files_list + get_rpm_files(rpmdb, pkg)
+
+    elif provider != None and pkg != None:
+        #provider (string) and pkg (list) have both been supplied and
+        #package_list (dict) has not, so getting the files for the provided
+        #package list from the given provider
+        if 'dpkg' in provider:
+            log.debug("'dpkg' determined as a provider in get_files")
+            files_list = files_list + get_dpkg_files(pkg)
+
+        if 'rpm' in pkg_provider:
+            log.debug("'rpm' determined as a provider in get_files")
+            ts = rpm.TransactionSet()
+            rpmdb = ts.dbMatch('name')
+            files_list = files_list + get_rpm_files(rpmdb, pkg)
+    else:
+        if package_list != None and provider is None and pkg is None:
+            log.debug("package_list = %s" % package_list)
+            raise ValueError("package_list must be a dict")
+        elif package_list is None and provider != None or pkg != None:
+            log.debug("provider = %s" % provider)
+            log.debug("pkg = %s" % pkg)
+            raise ValueError("provider must be a string accompanied by pkg which should be a list")
 
     log.debug("final file_list is: %s" % files_list)
 
@@ -154,7 +179,13 @@ def get_dpkg_files(pkg):
     """ return a list of files shipped with a debian package """
     log.debug("in get_dpkg_files(%s)" % pkg)
 
-    pkg_file_list = runme('dpkg -L %s' % pkg)[1][0].split('\n')
+    if type(pkg) is type(''):
+        pkg_file_list = runme('dpkg -L %s' % pkg)[1][0].split('\n')
+    elif type(pkg) is type([]):
+        for package in pkg:
+            pkg_file_list = runme('dpkg -L %s' % package)[1][0].split('\n')
+    else:
+        raise ValueError("pkg must be a string or list")
 
     return pkg_file_list
 
@@ -240,7 +271,10 @@ def main():
             pkg_provider.append(provider)
 
     #get a list of the files (not dirs) shipped with a package
-    pkg_stat = {}
+    pkg_file_list = get_files(pkg_list)
+
+    print pkg_file_list
+
     for provider in pkg_provider:
         pkg_stat[provider] = {}
         for pkg in pkg_list[provider]:
@@ -250,6 +284,7 @@ def main():
             #get the atime/ctime for the files from the packages
             pkg_stat[provider][pkg]['files'] = file_stat(pkg_files)
 
+    for provider in pkg_provider:
         #iterate over the list of files for each package and check the atime for
         #every file. the most recent atime is the atime for the entire package
         for pkg in pkg_stat[provider]:
