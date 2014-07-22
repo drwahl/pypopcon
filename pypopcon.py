@@ -9,8 +9,12 @@ import time
 import optparse
 try:
     import rpm
-except:
+except ImportError:
     rpm = False
+try:
+    import apt
+except ImportError:
+    apt = False
 
 ### logging setup
 global_log_level = logging.WARN
@@ -48,22 +52,6 @@ def get_options():
     return options
 
 
-def runme(cmd):
-    """ run commands in a subprocess and wait for the return code. """
-    log.debug("in runme(%s)" % cmd)
-
-    proc = subprocess.Popen(cmd,
-                            shell=True,
-                            stdin=subprocess.PIPE,
-                            stdout=subprocess.PIPE,
-                            stderr=subprocess.PIPE)
-    output = proc.communicate()
-
-    log.debug("return code: %s" % proc.returncode)
-
-    return proc.returncode, output
-
-
 def get_files(package_list = None, provider = None, pkg = None):
     """ method to get a list of files of each package for each package management system (returns a list) """
     log.debug("in get_files(%s, %s, %s)" % (package_list, provider, pkg))
@@ -72,16 +60,20 @@ def get_files(package_list = None, provider = None, pkg = None):
     if package_list != None and type(package_list) is type({}):
         #a dict of package managers as keys and a list of packages as values has
         #been passed in, so iterate over that
-        for pkg_provider in package_list:
-            if 'dpkg' in pkg_provider:
-                log.debug("'dpkg' determined as a provider in get_files")
-                files_list = files_list + get_dpkg_files(package_list['dpkg'])
+        files_list_dict = {}
+        if 'dpkg' in package_list:
+            log.debug("'dpkg' determined as a provider in get_files")
+            files_list_dict['dpkg'] = {}
+            cache = apt.cache.Cache()
+            for package in package_list['dpkg']:
+                files_list_dict['dpkg'] = files_list + get_dpkg_files(package, cache)
+            cache.close()
 
-            if 'rpm' in pkg_provider:
-                log.debug("'rpm' determined as a provider in get_files")
-                ts = rpm.TransactionSet()
-                rpmdb = ts.dbMatch('name')
-                files_list = files_list + get_rpm_files(rpmdb, pkg)
+        if 'rpm' in package_list:
+            log.debug("'rpm' determined as a provider in get_files")
+            ts = rpm.TransactionSet()
+            rpmdb = ts.dbMatch('name')
+            files_list = files_list + get_rpm_files(rpmdb, pkg)
 
     elif provider != None and pkg != None:
         #provider (string) and pkg (list) have both been supplied and
@@ -175,19 +167,38 @@ def get_dpkg_packages():
     return dpkg_list
 
 
-def get_dpkg_files(pkg):
+def get_dpkg_files(pkg, use_cache = None):
     """ return a list of files shipped with a debian package """
     log.debug("in get_dpkg_files(%s)" % pkg)
 
+    if use_cache == None:
+        cache = apt.cache.Cache()
+    else:
+        cache = use_cache
+
+    def _get_the_files(single_pkg):
+        log.debug("in get_dpkg_files._get_the_files(%s)" % single_pkg)
+        package = cache[single_pkg]
+        pkg_file_list = package.installed_files
+        log.debug("returning pkg_file_list: %s" % pkg_file_list)
+        return pkg_file_list
+
     if type(pkg) is type(''):
-        pkg_file_list = runme('dpkg -L %s' % pkg)[1][0].split('\n')
+        log.debug('package type is string')
+        final_pkg_files_list = _get_the_files(pkg)
     elif type(pkg) is type([]):
-        for package in pkg:
-            pkg_file_list = runme('dpkg -L %s' % package)[1][0].split('\n')
+        log.debug('package type is list')
+        pkg_file_list = []
+        for iter_pkg in pkg:
+            final_pkg_files_list = pkg_file_list + _get_the_files(iter_pkg)
     else:
         raise ValueError("pkg must be a string or list")
 
-    return pkg_file_list
+    if use_cache == None:
+        cache.close()
+
+    log.debug("returning final_pkg_files_list: %s" % final_pkg_files_list)
+    return final_pkg_files_list
 
 
 def get_rpm_packages():
@@ -276,6 +287,7 @@ def main():
     print pkg_file_list
 
     for provider in pkg_provider:
+        #pkg_stat needs to be a dict where key = rpm/dpkg and value = list of dicts (package => file_list)
         pkg_stat[provider] = {}
         for pkg in pkg_list[provider]:
             pkg_stat[provider][pkg] = {}
