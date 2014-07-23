@@ -31,7 +31,7 @@ def get_options():
     """ command-line options """
     log.debug("in get_options()")
 
-    usage = "usage: %prog -f <FILE> [options]"
+    usage = "usage: %prog [options]"
     OptionParser = optparse.OptionParser
     parser = OptionParser(usage)
 
