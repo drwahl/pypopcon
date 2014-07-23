@@ -66,7 +66,18 @@ def get_files(package_list = None, provider = None, pkg = None):
             files_list_dict['dpkg'] = {}
             cache = apt.cache.Cache()
             for package in package_list['dpkg']:
-                files_list_dict['dpkg'] = files_list + get_dpkg_files(package, cache)
+                final_files_list = []
+                for pkg_file in get_dpkg_files(package, cache):
+                    log.debug('found pkg_file: %s' % pkg_file)
+                    if type(pkg_file) is type(u'') or type(pkg_file) is type('') and pkg_file.__len__() > 0:
+                        log.debug('pkg_file %s is either str or unicode' % pkg_file)
+                        if os.path.isfile(pkg_file):
+                            log.debug('adding file (not dir) to package file list: %s' % pkg_file)
+                            final_files_list.append(pkg_file)
+                    else:
+                        log.debug('directory (not file) not being added to file list: %s' % pkg_file)
+                    #log.debug('final_files_list result is: %s' % final_files_list)
+                files_list_dict['dpkg'][package] = final_files_list
             cache.close()
 
         if 'rpm' in package_list:
@@ -74,6 +85,8 @@ def get_files(package_list = None, provider = None, pkg = None):
             ts = rpm.TransactionSet()
             rpmdb = ts.dbMatch('name')
             files_list = files_list + get_rpm_files(rpmdb, pkg)
+
+        files_list = files_list_dict
 
     elif provider != None and pkg != None:
         #provider (string) and pkg (list) have both been supplied and
@@ -125,17 +138,10 @@ def get_file_stat(pkgfile):
     file_stats = {}
     pkg_file_stat = os.stat(pkgfile)
     #file stats (this needs to be a list of dicts)
-    file_stats = {'mode': pkg_file_stat.st_mode,
-                  'inode': pkg_file_stat.st_ino,
-                  'device': pkg_file_stat.st_dev,
-                  'hard_links': pkg_file_stat.st_nlink,
-                  'owner_uid': pkg_file_stat.st_uid,
-                  'owner_gid': pkg_file_stat.st_gid,
-                  'byte_size': int(pkg_file_stat.st_size),
-                  'atime': int(pkg_file_stat.st_atime),
+    file_stats = {'atime': int(pkg_file_stat.st_atime),
                   'mtime': int(pkg_file_stat.st_mtime),
                   'ctime': int(pkg_file_stat.st_ctime),
-                  }
+                 }
     return file_stats
 
 
@@ -150,7 +156,7 @@ def file_stat(pkgfile):
                 pkg_files[item] = get_file_stat(item)
         return pkg_files
     else:
-        return get_file_stat(item)
+        return get_file_stat(pkgfile)
 
 
 def get_dpkg_packages():
@@ -273,6 +279,8 @@ def main():
         print "No package management system found."
         sys.exit(1)
 
+    #pkg_list will be a dict in the form of:
+    # { 'dpkg': [list_of_dpkg_packages], 'rpm': [list_of_rpm_package] }
     pkg_list = get_packages(installed_pkg_providers)
 
     #ignore any package managers that are installed, but are managing zero packages
@@ -281,52 +289,43 @@ def main():
         if pkg_list[provider]:
             pkg_provider.append(provider)
 
-    #get a list of the files (not dirs) shipped with a package
+    #get a list of the files (not dirs) shipped with a package. the resulting pkg_file_list should be:
+    # { 'dpkg': [ {'pkg-foo': ['/usr', '/usr/bin/foo'] }, { 'pkg-bar': ['/var', '/var/log/bar.log'] } }
     pkg_file_list = get_files(pkg_list)
 
-    print pkg_file_list
-
-    for provider in pkg_provider:
-        #pkg_stat needs to be a dict where key = rpm/dpkg and value = list of dicts (package => file_list)
-        pkg_stat[provider] = {}
-        for pkg in pkg_list[provider]:
-            pkg_stat[provider][pkg] = {}
-
-            pkg_files = get_files(provider, pkg)
-            #get the atime/ctime for the files from the packages
-            pkg_stat[provider][pkg]['files'] = file_stat(pkg_files)
-
-    for provider in pkg_provider:
+    for provider in pkg_file_list:
         #iterate over the list of files for each package and check the atime for
         #every file. the most recent atime is the atime for the entire package
-        for pkg in pkg_stat[provider]:
-            pkgatime_list = []
-            pkgctime_list = []
-            for pkgfile in pkg_stat[provider][pkg]['files']:
-                pkgatime_list.append(pkg_stat[provider][pkg]['files'][pkgfile]['atime'])
-                pkgctime_list.append(pkg_stat[provider][pkg]['files'][pkgfile]['ctime'])
-            pkg_stat[provider][pkg]['atime'] = 0
-            pkg_stat[provider][pkg]['ctime'] = 0
-            for atime in pkgatime_list:
-                if atime > pkg_stat[provider][pkg]['atime']:
-                    pkg_stat[provider][pkg]['atime'] = atime
-            for ctime in pkgctime_list:
-                if ctime > pkg_stat[provider][pkg]['ctime']:
-                    pkg_stat[provider][pkg]['ctime'] = ctime
+        #this for loop will result in pkg_stat being a dict in the form of:
+        #{ package: { 'atime': %i, 'ctime': %i } }
+        #atime and ctime are calculated by the most recent atime/ctime of any given
+        #file from pkg_file_list
+        pkg_stat = {}
+        for package in pkg_file_list[provider]:
+            pkgatime_list, pkgctime_list = [], []
+            pkg_stat[package] = {'atime': 0, 'ctime': 0}
+            pkg_stat[package]['atime'] = 0
+            pkg_stat[package]['ctime'] = 0
+            for pkgfile in pkg_file_list[provider][package]:
+                pkg_atime_ctime = file_stat(pkgfile)
+                if pkg_atime_ctime['atime'] > pkg_stat[package]['atime']:
+                    pkg_stat[package]['atime'] = pkg_atime_ctime['atime']
+                if pkg_atime_ctime['ctime'] > pkg_stat[package]['ctime']:
+                    pkg_stat[package]['ctime'] = pkg_atime_ctime['ctime']
 
-        for pkg in pkg_stat[provider]:
+        for pkg in pkg_stat:
             #analysis from file stats
-            if pkg_stat[provider][pkg]['atime'] < lastmonth:
-                pkg_stat[provider][pkg]['analysis'] = '<OLD>'
-            elif pkg_stat[provider][pkg]['atime'] > lastmonth and int(pkg_stat[provider][pkg]['atime']) - int(pkg_stat[provider][pkg]['ctime']) < daylen:
-                pkg_stat[provider][pkg]['analysis'] = '<RECENT-CTIME>'
+            if pkg_stat[pkg]['atime'] < lastmonth:
+                pkg_stat[pkg]['analysis'] = '<OLD>'
+            elif pkg_stat[pkg]['atime'] > lastmonth and int(pkg_stat[pkg]['atime']) - int(pkg_stat[pkg]['ctime']) < daylen:
+                pkg_stat[pkg]['analysis'] = '<RECENT-CTIME>'
             else:
-                pkg_stat[provider][pkg]['analysis'] = ''
+                pkg_stat[pkg]['analysis'] = ''
 
     #print in reverse order of atime
     for provider in pkg_stat:
-        for pkg, atime in sorted(pkg_stat[provider].iteritems(), reverse=True, key=lambda x: x[1]['atime']):
-            print '%s %s %s %s' % (pkg_stat[provider][pkg]['atime'], pkg_stat[provider][pkg]['ctime'], pkg, pkg_stat[provider][pkg]['analysis'])
+        for pkg, atime in sorted(pkg_stat.iteritems(), reverse=True, key=lambda x: x[1]['atime']):
+            print '%i %i %s %s' % (pkg_stat[pkg]['atime'], pkg_stat[pkg]['ctime'], pkg, pkg_stat[pkg]['analysis'])
 
 
 if __name__ == "__main__":
