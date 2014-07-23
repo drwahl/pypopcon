@@ -323,9 +323,8 @@ def main():
                 pkg_stat[pkg]['analysis'] = ''
 
     #print in reverse order of atime
-    for provider in pkg_stat:
-        for pkg, atime in sorted(pkg_stat.iteritems(), reverse=True, key=lambda x: x[1]['atime']):
-            print '%i %i %s %s' % (pkg_stat[pkg]['atime'], pkg_stat[pkg]['ctime'], pkg, pkg_stat[pkg]['analysis'])
+    for pkg, atime in sorted(pkg_stat.iteritems(), reverse=True, key=lambda x: x[1]['atime']):
+        print '%i %i %s %s' % (pkg_stat[pkg]['atime'], pkg_stat[pkg]['ctime'], pkg, pkg_stat[pkg]['analysis'])
 
 
 if __name__ == "__main__":
