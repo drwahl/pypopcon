@@ -306,10 +306,12 @@ def main():
             pkg_stat[package] = {'atime': 0, 'ctime': 0}
             pkg_stat[package]['atime'] = 0
             pkg_stat[package]['ctime'] = 0
+            pkg_stat[package]['file'] = ''
             for pkgfile in pkg_file_list[provider][package]:
                 pkg_atime_ctime = file_stat(pkgfile)
                 if pkg_atime_ctime['atime'] > pkg_stat[package]['atime']:
                     pkg_stat[package]['atime'] = pkg_atime_ctime['atime']
+                    pkg_stat[package]['file'] = pkgfile
                 if pkg_atime_ctime['ctime'] > pkg_stat[package]['ctime']:
                     pkg_stat[package]['ctime'] = pkg_atime_ctime['ctime']
 
@@ -324,7 +326,7 @@ def main():
 
     #print in reverse order of atime
     for pkg, atime in sorted(pkg_stat.iteritems(), reverse=True, key=lambda x: x[1]['atime']):
-        print '%i %i %s %s' % (pkg_stat[pkg]['atime'], pkg_stat[pkg]['ctime'], pkg, pkg_stat[pkg]['analysis'])
+        print '%i %i %s %s %s' % (pkg_stat[pkg]['atime'], pkg_stat[pkg]['ctime'], pkg, pkg_stat[pkg]['analysis'], pkg_stat[pkg]['file'])
 
 
 if __name__ == "__main__":
